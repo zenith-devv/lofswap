@@ -1,4 +1,4 @@
 build:
   mainFile: 'Cargo.toml'
   flags: '-r --workspace'
-  outputPath: ''
+  outputPath: 'target/release'
