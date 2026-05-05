@@ -11,7 +11,6 @@ on:
       - blockchain-core/**
       - node-cli/**
       - wallet-cli/**
-      - wallet-gui/**
       - lofswap-logo.png
 
 permissions:
@@ -29,7 +28,6 @@ jobs:
       workflow: ${{ steps.filter.outputs.workflow }}
       node_cli: ${{ steps.filter.outputs.node_cli }}
       wallet_cli: ${{ steps.filter.outputs.wallet_cli }}
-      wallet_gui: ${{ steps.filter.outputs.wallet_gui }}
       any: ${{ steps.matrix.outputs.any }}
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -55,12 +53,6 @@ jobs:
               - 'Cargo.lock'
               - 'blockchain-core/**'
               - 'wallet-cli/**'
-            wallet_gui:
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'blockchain-core/**'
-              - 'wallet-gui/**'
-              - 'lofswap-logo.png'
 
       - name: Build release matrix
         id: matrix
@@ -69,7 +61,6 @@ jobs:
           export WORKFLOW_CHANGED="${{ steps.filter.outputs.workflow }}"
           export NODE_CLI_CHANGED="${{ steps.filter.outputs.node_cli }}"
           export WALLET_CLI_CHANGED="${{ steps.filter.outputs.wallet_cli }}"
-          export WALLET_GUI_CHANGED="${{ steps.filter.outputs.wallet_gui }}"
 
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
@@ -78,7 +69,6 @@ jobs:
           changed = {
               "node-cli": os.environ["NODE_CLI_CHANGED"] == "true",
               "wallet-cli": os.environ["WALLET_CLI_CHANGED"] == "true",
-              "wallet-gui": os.environ["WALLET_GUI_CHANGED"] == "true",
           }
           workflow_changed = os.environ["WORKFLOW_CHANGED"] == "true"
 
@@ -92,11 +82,6 @@ jobs:
                   "cargo_package": "wallet-cli",
                   "binary_name": "wallet-cli",
                   "asset_prefix": "lofswap-wallet-cli",
-              },
-              "wallet-gui": {
-                  "cargo_package": "wallet-gui",
-                  "binary_name": "wallet-gui",
-                  "asset_prefix": "lofswap-wallet-gui",
               },
           }
 
@@ -195,14 +180,6 @@ jobs:
             patchelf \
             pkg-config
 
-      - name: Setup Node.js
-        if: matrix.component == 'wallet-gui'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: wallet-gui/frontend/package-lock.json
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -213,70 +190,8 @@ jobs:
         with:
           shared-key: release-${{ matrix.component }}-${{ matrix.target }}
 
-      - name: Build wallet-gui frontend
-        if: matrix.component == 'wallet-gui'
-        working-directory: wallet-gui/frontend
-        run: |
-          npm ci --no-audit --no-fund
-          npm run build
-
       - name: Build release binary
         run: cargo build --release -p ${{ matrix.cargo_package }} --target ${{ matrix.target }}
-
-      - name: Package release asset
-        id: package
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          asset_base="${{ matrix.asset_prefix }}-${{ matrix.os_label }}-${{ matrix.arch }}"
-          package_root="${RUNNER_TEMP}/release-package"
-          package_dir="${package_root}/${asset_base}"
-          archive_path="${RUNNER_TEMP}/${asset_base}.tar.gz"
-          binary_path="target/${{ matrix.target }}/release/${{ matrix.binary_name }}${{ matrix.exe_suffix }}"
-          packaged_binary="${package_dir}/${asset_base}${{ matrix.exe_suffix }}"
-
-          mkdir -p "${package_dir}"
-          cp "${binary_path}" "${packaged_binary}"
-
-          if [[ "${{ matrix.component }}" == "wallet-gui" ]]; then
-            cp -R wallet-gui/frontend/dist "${package_dir}/frontend-dist"
-
-            if [[ "${{ matrix.os_label }}" == "windows" ]]; then
-              cat > "${package_dir}/start-lofswap-wallet-gui.cmd" <<EOF
-          @echo off
-          setlocal
-          set "SCRIPT_DIR=%~dp0"
-          set "GUI_APP_DIST_DIR=%SCRIPT_DIR%frontend-dist"
-          "%SCRIPT_DIR%${asset_base}${{ matrix.exe_suffix }}" %*
-          EOF
-            else
-              launcher_name="start-lofswap-wallet-gui.sh"
-              if [[ "${{ matrix.os_label }}" == "macos" ]]; then
-                launcher_name="start-lofswap-wallet-gui.command"
-              fi
-
-              cat > "${package_dir}/${launcher_name}" <<EOF
-          #!/usr/bin/env bash
-          set -euo pipefail
-          SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-          export GUI_APP_DIST_DIR="\${SCRIPT_DIR}/frontend-dist"
-          exec "\${SCRIPT_DIR}/${asset_base}${{ matrix.exe_suffix }}" "\$@"
-          EOF
-              chmod +x "${package_dir}/${launcher_name}"
-            fi
-          fi
-          tar -czf "${archive_path}" -C "${package_root}" "${asset_base}"
-          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload packaged artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.asset_prefix }}-${{ matrix.os_label }}-${{ matrix.arch }}
-          path: ${{ steps.package.outputs.archive_path }}
-          if-no-files-found: error
-          retention-days: 7
-
   publish-release:
     name: Publish GitHub Release
     needs:
