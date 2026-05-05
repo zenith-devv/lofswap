@@ -1,5 +1,0 @@
-{
-  "CompilerFlags": "-r --workspace",
-  "MainFile": "Cargo.toml",
-  "OutputFile": ""
-}
