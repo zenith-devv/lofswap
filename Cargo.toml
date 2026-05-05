@@ -5,5 +5,4 @@ members = [
     "explorer-api",
     "wallet-cli",
     "node-cli",
-    "wallet-gui"
 ]
